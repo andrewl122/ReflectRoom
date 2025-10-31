@@ -15,8 +15,12 @@ struct PersistenceController {
         let result = PersistenceController(inMemory: true)
         let viewContext = result.container.viewContext
         for _ in 0..<10 {
-            let newItem = Item(context: viewContext)
+            let newItem = ReflectionEntry(context: viewContext)
             newItem.timestamp = Date()
+            // Optionally set other fields if needed
+            // newItem.text = "Example text"
+            // newItem.mood = "Calm"
+
         }
         do {
             try viewContext.save()
