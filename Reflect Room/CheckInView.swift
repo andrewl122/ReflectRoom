@@ -25,9 +25,9 @@ struct CheckInView: View {
 
     // MARK: - Audio
     @State private var showAudioRecorder = false
-    @State private var tempAudioURL: URL?          // temp file for preview before save
-    @State private var pendingAudioURL: URL?       // handed back from recorder sheet
-    @State private var audioFilenameSaved: String? // stored filename after save
+    @State private var tempAudioURL: URL?
+    @State private var pendingAudioURL: URL?
+    @State private var audioFilenameSaved: String?
 
     // MARK: - Text
     @State private var reflectionText = ""
@@ -52,135 +52,146 @@ struct CheckInView: View {
     }
 
     var body: some View {
-        ZStack {
-            ReflectRoomBackground().ignoresSafeArea()
+        ScrollViewReader { proxy in
+            ZStack {
+                ReflectRoomBackground().ignoresSafeArea()
 
-            // MAIN CONTENT
-            ScrollView {
-                VStack(spacing: AppTheme.Spacing.lg) {
-
-                    // MARK: - Header
-                    VStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Check-In")
-                            .appTitle()
-                        Text("Today you’re feeling \(selectedMood)")
-                            .subtleLabel()
-                    }
-                    .padding(.top, 10)
-
-                    // MARK: - Reflection Type
-                    VStack(spacing: AppTheme.Spacing.sm) {
-                        Text("Reflection Type")
-                            .appHeadline()
-                        Picker("Reflection Type", selection: $reflectionType) {
-                            Text("Video").tag("video")
-                            Text("Voice").tag("audio")
-                            Text("Text").tag("text")
+                // MAIN CONTENT
+                ScrollView {
+                    VStack(spacing: AppTheme.Spacing.lg) {
+                        // MARK: - Header
+                        VStack(spacing: AppTheme.Spacing.xs) {
+                            Text("Check-In")
+                                .appTitle()
+                            Text("Today you’re feeling \(selectedMood)")
+                                .subtleLabel()
                         }
-                        .pickerStyle(.segmented)
-                        .onChange(of: reflectionType) { _ in Haptics.tap() }
-                    }
-                    .cardBackground(scheme)
+                        .padding(.top, 10)
 
-                    // MARK: - Reflection Type Sections
-                    Group {
-                        if reflectionType == "video" {
-                            videoSection
-                        } else if reflectionType == "audio" {
-                            AudioCaptureStrip(
-                                tempAudioURL: $tempAudioURL,
-                                audioFilenameSaved: $audioFilenameSaved,
-                                onRecord: { showAudioRecorder = true }
-                            )
-                            .cardBackground(scheme)
-                        } else {
-                            EmptyView()
-                        }
-                    }
-
-                    // Notes Card (fixed layout - header and editor live inside one card)
-                    VStack(spacing: 0) {
-                        // Header inside the card
-                        HStack {
-                            Text("Write Your Reflection")
+                        // MARK: - Reflection Type
+                        VStack(spacing: AppTheme.Spacing.sm) {
+                            Text("Reflection Type")
                                 .appHeadline()
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppTheme.Spacing.md)
-                        .padding(.top, AppTheme.Spacing.md)
+                                .padding(.top, AppTheme.Spacing.md) // keeps title centered nicely
 
-                        // Editor with generous internal padding so text never touches edges
-                        TextEditor(text: $reflectionText)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 170)
+                            Picker("Reflection Type", selection: $reflectionType) {
+                                Text("Video").tag("video")
+                                Text("Voice").tag("audio")
+                                Text("Text").tag("text")
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: reflectionType) { _ in Haptics.tap() }
+                        }
+                        .cardBackground(scheme)
+
+                        // MARK: - Reflection Type Sections
+                        Group {
+                            if reflectionType == "video" {
+                                videoSection
+                            } else if reflectionType == "audio" {
+                                AudioCaptureStrip(
+                                    tempAudioURL: $tempAudioURL,
+                                    audioFilenameSaved: $audioFilenameSaved,
+                                    onRecord: { showAudioRecorder = true }
+                                )
+                                .cardBackground(scheme)
+                            } else {
+                                EmptyView()
+                            }
+                        }
+
+                        // MARK: - Notes Card
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("Write Your Reflection")
+                                    .appHeadline()
+                                Spacer()
+                            }
                             .padding(.horizontal, AppTheme.Spacing.md)
-                            .padding(.top, AppTheme.Spacing.sm)
-                            .padding(.bottom, AppTheme.Spacing.md)
-                    }
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
-                            .fill(AppTheme.Colors.cardBg(scheme))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
-                            .stroke(AppTheme.Colors.accent.opacity(0.12), lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.07), radius: 4, x: 0, y: 2)
+                            .padding(.top, AppTheme.Spacing.md)
 
-                    .cardBackground(scheme)
-
-                    // MARK: - Save Button
-                    Button(action: saveAndNotify) {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Save Entry").bold()
+                            TextEditor(text: $reflectionText)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 170)
+                                .padding(.horizontal, AppTheme.Spacing.md)
+                                .padding(.top, AppTheme.Spacing.sm)
+                                .padding(.bottom, AppTheme.Spacing.md)
+                                .id("ReflectionEditor")
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(AppTheme.Colors.successSoft)
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .cornerRadius(AppTheme.Radii.lg)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                                .fill(AppTheme.Colors.cardBg(scheme))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                                .stroke(AppTheme.Colors.accent.opacity(0.12), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.07),
+                                radius: 4, x: 0, y: 2)
+                        .cardBackground(scheme)
+
+                        // MARK: - Save Button
+                        Button(action: saveAndNotify) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                Text("Save Entry").bold()
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(AppTheme.Colors.successSoft)
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .cornerRadius(AppTheme.Radii.lg)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight + 24 : 60)
+                }
+                .scrollIndicators(.hidden)
+            }
+
+            // MARK: - Success Banner
+            .safeAreaInset(edge: .top) {
+                if showSuccessBanner {
+                    SuccessBannerView(message: "Reflection Saved — Keep it up!")
+                        .padding(.horizontal)
+                        .padding(.top, 6)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
+                }
+            }
+
+            .onTapGesture { dismissKeyboard() }
+
+            // MARK: - Keyboard and Auto-scroll Behavior
+            .onReceive(keyboardPublisher) { height in
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    keyboardHeight = height
+                    isTabBarHidden = height > 0
+                    if height > 0 {
+                        // smooth scroll to reflection editor
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                proxy.scrollTo("ReflectionEditor", anchor: .bottom)
+                            }
+                        }
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, keyboardHeight > 0 ? keyboardHeight + 24 : 60)
             }
-            .scrollIndicators(.hidden)
 
-        }
-
-        // MARK: - Success Banner
-        .safeAreaInset(edge: .top) {
-            if showSuccessBanner {
-                SuccessBannerView(message: "Reflection Saved — Keep it up!")
-                    .padding(.horizontal)
-                    .padding(.top, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
+            // MARK: - Sheets
+            .sheet(isPresented: $showVideoRecorder) {
+                VideoRecorder(videoURL: $videoURL)
             }
-        }
-
-        .onTapGesture { dismissKeyboard() }
-        .onReceive(keyboardPublisher) { height in
-            withAnimation(.easeOut(duration: 0.25)) {
-                keyboardHeight = height
-                isTabBarHidden = height > 0
-            }
-        }
-
-        // MARK: - Sheets
-        .sheet(isPresented: $showVideoRecorder) {
-            VideoRecorder(videoURL: $videoURL)
-        }
-        .sheet(isPresented: $showAudioRecorder, onDismiss: {
-            if let url = pendingAudioURL {
-                tempAudioURL = url
-                pendingAudioURL = nil
-                print("✅ Audio ready for preview: \(url.lastPathComponent)")
-            }
-        }) {
-            AudioRecorderView(tempAudioURL: $pendingAudioURL) { savedURL in
-                pendingAudioURL = savedURL
+            .sheet(isPresented: $showAudioRecorder, onDismiss: {
+                if let url = pendingAudioURL {
+                    tempAudioURL = url
+                    pendingAudioURL = nil
+                    print("✅ Audio ready for preview: \(url.lastPathComponent)")
+                }
+            }) {
+                AudioRecorderView(tempAudioURL: $pendingAudioURL) { savedURL in
+                    pendingAudioURL = savedURL
+                }
             }
         }
     }
