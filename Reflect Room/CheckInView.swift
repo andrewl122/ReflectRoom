@@ -9,11 +9,13 @@ import SwiftUI
 import AVKit
 import CoreData
 import AVFoundation
+import Combine
 
 struct CheckInView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
+    @Environment(\.colorScheme) private var scheme
+    @Binding var isTabBarHidden: Bool
 
     var selectedMood: String
 
@@ -23,75 +25,148 @@ struct CheckInView: View {
 
     // MARK: - Audio
     @State private var showAudioRecorder = false
-    @State private var tempAudioURL: URL?
-    @State private var pendingAudioURL: URL?
-    @State private var audioFilenameSaved: String?
+    @State private var tempAudioURL: URL?          // temp file for preview before save
+    @State private var pendingAudioURL: URL?       // handed back from recorder sheet
+    @State private var audioFilenameSaved: String? // stored filename after save
 
     // MARK: - Text
     @State private var reflectionText = ""
 
-    // MARK: - Mode
+    // MARK: - Mode (default video)
     @State private var reflectionType: String = "video"
+
+    // MARK: - Save Feedback
+    @State private var showSuccessBanner = false
+
+    // MARK: - Keyboard Handling
+    @State private var keyboardHeight: CGFloat = 0
+    private var keyboardPublisher: AnyPublisher<CGFloat, Never> {
+        Publishers.Merge(
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
+                .compactMap { $0.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect }
+                .map { $0.height },
+            NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
+                .map { _ in CGFloat(0) }
+        )
+        .eraseToAnyPublisher()
+    }
 
     var body: some View {
         ZStack {
-            ReflectRoomBackground()
+            ReflectRoomBackground().ignoresSafeArea()
 
+            // MAIN CONTENT
             ScrollView {
-                VStack(spacing: 30) {
-                    Text("Check-In")
-                        .font(.largeTitle).fontWeight(.bold)
-                        .foregroundColor(colorScheme == .dark ? .white : .black)
-                        .padding(.top, 10)
+                VStack(spacing: AppTheme.Spacing.lg) {
 
-                    Text("Today you’re feeling \(selectedMood)")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-
-                    Picker("Reflection Type", selection: $reflectionType) {
-                        Text("Video").tag("video")
-                        Text("Voice").tag("audio")
-                        Text("Text").tag("text")
+                    // MARK: - Header
+                    VStack(spacing: AppTheme.Spacing.xs) {
+                        Text("Check-In")
+                            .appTitle()
+                        Text("Today you’re feeling \(selectedMood)")
+                            .subtleLabel()
                     }
-                    .pickerStyle(.segmented)
+                    .padding(.top, 10)
 
-                    if reflectionType == "video" {
-                        videoSection
-                    } else if reflectionType == "audio" {
-                        AudioCaptureStrip(
-                            tempAudioURL: $tempAudioURL,
-                            audioFilenameSaved: $audioFilenameSaved,
-                            onRecord: { showAudioRecorder = true }
-                        )
+                    // MARK: - Reflection Type
+                    VStack(spacing: AppTheme.Spacing.sm) {
+                        Text("Reflection Type")
+                            .appHeadline()
+                        Picker("Reflection Type", selection: $reflectionType) {
+                            Text("Video").tag("video")
+                            Text("Voice").tag("audio")
+                            Text("Text").tag("text")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: reflectionType) { _ in Haptics.tap() }
+                    }
+                    .cardBackground(scheme)
+
+                    // MARK: - Reflection Type Sections
+                    Group {
+                        if reflectionType == "video" {
+                            videoSection
+                        } else if reflectionType == "audio" {
+                            AudioCaptureStrip(
+                                tempAudioURL: $tempAudioURL,
+                                audioFilenameSaved: $audioFilenameSaved,
+                                onRecord: { showAudioRecorder = true }
+                            )
+                            .cardBackground(scheme)
+                        } else {
+                            EmptyView()
+                        }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Write Your Reflection").font(.headline)
+                    // Notes Card (fixed layout - header and editor live inside one card)
+                    VStack(spacing: 0) {
+                        // Header inside the card
+                        HStack {
+                            Text("Write Your Reflection")
+                                .appHeadline()
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.md)
+                        .padding(.top, AppTheme.Spacing.md)
+
+                        // Editor with generous internal padding so text never touches edges
                         TextEditor(text: $reflectionText)
-                            .frame(height: 150)
-                            .padding(8)
-                            .background(Color(UIColor.secondarySystemBackground).opacity(0.8))
-                            .cornerRadius(12)
-                            .shadow(radius: 1)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 170)
+                            .padding(.horizontal, AppTheme.Spacing.md)
+                            .padding(.top, AppTheme.Spacing.sm)
+                            .padding(.bottom, AppTheme.Spacing.md)
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                            .fill(AppTheme.Colors.cardBg(scheme))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                            .stroke(AppTheme.Colors.accent.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.07), radius: 4, x: 0, y: 2)
 
-                    Button(action: {
-                        saveReflection()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { dismiss() }
-                    }) {
-                        Text("Save Entry")
-                            .fontWeight(.bold)
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color.green.opacity(0.25))
-                            .cornerRadius(12)
+                    .cardBackground(scheme)
+
+                    // MARK: - Save Button
+                    Button(action: saveAndNotify) {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Save Entry").bold()
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(AppTheme.Colors.successSoft)
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .cornerRadius(AppTheme.Radii.lg)
                     }
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom, keyboardHeight > 0 ? keyboardHeight + 24 : 60)
             }
             .scrollIndicators(.hidden)
+
         }
+
+        // MARK: - Success Banner
+        .safeAreaInset(edge: .top) {
+            if showSuccessBanner {
+                SuccessBannerView(message: "Reflection Saved — Keep it up!")
+                    .padding(.horizontal)
+                    .padding(.top, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
+            }
+        }
+
         .onTapGesture { dismissKeyboard() }
+        .onReceive(keyboardPublisher) { height in
+            withAnimation(.easeOut(duration: 0.25)) {
+                keyboardHeight = height
+                isTabBarHidden = height > 0
+            }
+        }
 
         // MARK: - Sheets
         .sheet(isPresented: $showVideoRecorder) {
@@ -110,35 +185,55 @@ struct CheckInView: View {
         }
     }
 
-    // MARK: - Video
+    // MARK: - Video Section
     private var videoSection: some View {
-        VStack(spacing: 15) {
+        VStack(spacing: AppTheme.Spacing.sm) {
             if let videoURL {
                 VideoPlayer(player: AVPlayer(url: videoURL))
                     .frame(height: 250)
-                    .cornerRadius(12)
-                    .shadow(radius: 4)
+                    .cornerRadius(AppTheme.Radii.lg)
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12),
+                            radius: 6, x: 0, y: 4)
             } else {
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
                     .fill(Color(UIColor.tertiarySystemFill))
                     .frame(height: 250)
-                    .cornerRadius(12)
-                    .overlay(Text("No video recorded").foregroundColor(.secondary))
+                    .overlay(Text("No video recorded").subtleLabel())
             }
 
-            Button(action: { showVideoRecorder = true }) {
+            Button {
+                Haptics.tap()
+                showVideoRecorder = true
+            } label: {
                 Text("Record Video")
                     .fontWeight(.medium)
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(Color.purple.opacity(0.2))
-                    .cornerRadius(12)
-                    .foregroundColor(.primary)
+                    .background(AppTheme.Colors.accentSoft)
+                    .cornerRadius(AppTheme.Radii.lg)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+            }
+        }
+        .cardBackground(scheme)
+    }
+
+    // MARK: - Save Logic
+    private func saveAndNotify() {
+        saveReflection()
+        Haptics.success()
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showSuccessBanner = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                showSuccessBanner = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                dismiss()
             }
         }
     }
 
-    // MARK: - Save
     private func saveReflection() {
         var savedVideoPath: String?
         var savedAudioPath: String?
@@ -181,7 +276,7 @@ struct CheckInView: View {
 }
 
 #Preview {
-    CheckInView(selectedMood: "Happy")
+    CheckInView(isTabBarHidden: .constant(false), selectedMood: "Happy")
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
 
@@ -192,56 +287,61 @@ private struct AudioCaptureStrip: View {
     var onRecord: () -> Void
 
     var body: some View {
-        VStack(spacing: 15) {
+        VStack(spacing: AppTheme.Spacing.sm) {
             if let filename = audioFilenameSaved, !filename.isEmpty {
                 AudioPlayerView(audioFilename: filename)
             } else if let url = tempAudioURL {
                 InlineAudioPlayer(audioURL: url)
             } else {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
                     .fill(Color(UIColor.tertiarySystemFill))
                     .frame(height: 80)
-                    .overlay(Text("No voice note recorded").foregroundColor(.secondary))
+                    .overlay(Text("No voice note recorded").subtleLabel())
             }
 
             Button(action: onRecord) {
-                Text("Record Voice Note")
-                    .fontWeight(.medium)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.purple.opacity(0.2))
-                    .cornerRadius(12)
-                    .foregroundColor(.primary)
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.circle.fill")
+                    Text("Record Voice Note").fontWeight(.medium)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(AppTheme.Colors.accentSoft)
+                .cornerRadius(AppTheme.Radii.lg)
+                .foregroundColor(AppTheme.Colors.textPrimary)
             }
         }
     }
 }
 
-// MARK: - Inline Audio Player for temp recordings
+// MARK: - Inline Audio Player
 private struct InlineAudioPlayer: View {
     let audioURL: URL
     @State private var isPlaying = false
     @State private var player: AVAudioPlayer?
 
     var body: some View {
-        HStack {
+        HStack(spacing: AppTheme.Spacing.md) {
             Button(action: togglePlayback) {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .resizable()
                     .frame(width: 40, height: 40)
-                    .foregroundColor(.purple)
+                    .foregroundColor(AppTheme.Colors.accent)
             }
-            Text(isPlaying ? "Playing..." : "Voice note ready")
-                .font(.subheadline)
-                .foregroundColor(.primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isPlaying ? "Playing..." : "Voice note ready")
+                    .appBody()
+                Text(audioURL.lastPathComponent)
+                    .font(.caption2)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
             Spacer()
         }
         .padding()
-        .background(Color(UIColor.secondarySystemBackground).opacity(0.8))
-        .cornerRadius(12)
-        .onDisappear {
-            player?.stop()
-        }
+        .modifier(CardBGShim())
+        .onDisappear { player?.stop() }
     }
 
     private func togglePlayback() {
@@ -260,5 +360,44 @@ private struct InlineAudioPlayer: View {
             player?.play()
             isPlaying = true
         }
+    }
+}
+
+// MARK: - Success Banner View (Bubble)
+private struct SuccessBannerView: View {
+    var message: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        HStack(spacing: AppTheme.Spacing.sm) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundColor(.green)
+            Text(message)
+                .font(.subheadline).bold()
+                .foregroundColor(AppTheme.Colors.textPrimary)
+        }
+        .padding(.horizontal, AppTheme.Spacing.md)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .background(
+            Capsule(style: .continuous)
+                .fill(AppTheme.Colors.successSoft)
+                .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12),
+                        radius: 6, x: 0, y: 4)
+        )
+    }
+}
+
+// MARK: - Card Background Shim
+private struct CardBGShim: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                    .fill(AppTheme.Colors.cardBg(scheme))
+            )
+            .cornerRadius(AppTheme.Radii.lg)
+            .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.07),
+                    radius: 4, x: 0, y: 2)
     }
 }

@@ -30,6 +30,7 @@ struct HomeView: View {
     @State private var navigateToCheckIn = false
     @State private var selectedTab: Tab = .home
     @State private var showInsightsView = false
+    @State private var isTabBarHidden = false
     @Environment(\.colorScheme) var scheme
 
     // MARK: - Core Data
@@ -74,9 +75,10 @@ struct HomeView: View {
                             moodButtonRow
 
                             NavigationLink(
-                                destination: CheckInView(selectedMood: selectedMood ?? "Unknown"),
+                                destination: CheckInView(isTabBarHidden: $isTabBarHidden, selectedMood: selectedMood ?? "Unknown"),
                                 isActive: $navigateToCheckIn
                             ) { EmptyView() }
+
 
                             moodOverviewSection
                             Spacer(minLength: 40)
@@ -90,7 +92,9 @@ struct HomeView: View {
                 SettingsView()
             }
 
-            CustomTabBar(selectedTab: $selectedTab)
+            if !isTabBarHidden {
+                CustomTabBar(selectedTab: $selectedTab)
+            }
         }
     }
 
