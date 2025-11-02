@@ -67,7 +67,7 @@ struct MoodInsightsView: View {
                             .animation(.easeInOut, value: avg)
                     }
 
-                    // MARK: - Reflection Streak
+                    // MARK: - Reflection Streak (Fixed)
                     VStack(spacing: AppTheme.Spacing.xs) {
                         Text("Reflection Streak")
                             .appHeadline()
@@ -75,6 +75,10 @@ struct MoodInsightsView: View {
                         Text("\(streak) day\(streak == 1 ? "" : "s")")
                             .font(.system(size: 28, weight: .semibold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: streak)
+                        Text("Keep your streak going by reflecting daily!")
+                            .font(.subheadline)
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
 
                     // MARK: - Insight Summary
@@ -194,19 +198,32 @@ struct MoodInsightsView: View {
         return filtered.isEmpty ? 0 : total / Double(filtered.count)
     }
 
-    // MARK: - Reflection Streak
+    // MARK: - Fixed Reflection Streak
     private func calculateReflectionStreak() -> Int {
-        let sorted = reflections.compactMap { $0.timestamp }.sorted(by: >)
-        guard let latest = sorted.first else { return 0 }
+        let sorted = reflections.compactMap { $0.timestamp }
+            .sorted(by: >)
+            .map { Calendar.current.startOfDay(for: $0) }
+
+        guard !sorted.isEmpty else { return 0 }
+
         var streak = 1
-        var previousDate = latest
-        for date in sorted.dropFirst() {
-            if Calendar.current.isDate(date, inSameDayAs: previousDate) { continue }
-            if let diff = Calendar.current.dateComponents([.day], from: date, to: previousDate).day, diff == 1 {
-                streak += 1
-                previousDate = date
-            } else { break }
+        var previous = sorted.first!
+
+        // ✅ Ensure the latest reflection is today
+        if !Calendar.current.isDateInToday(previous) {
+            return 0
         }
+
+        for date in sorted.dropFirst() {
+            let daysApart = Calendar.current.dateComponents([.day], from: date, to: previous).day ?? 0
+            if daysApart == 1 {
+                streak += 1
+                previous = date
+            } else if daysApart > 1 {
+                break
+            }
+        }
+
         return streak
     }
 

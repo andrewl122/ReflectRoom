@@ -79,7 +79,6 @@ struct HomeView: View {
                                 isActive: $navigateToCheckIn
                             ) { EmptyView() }
 
-
                             moodOverviewSection
                             Spacer(minLength: 40)
                         }
@@ -242,3 +241,4 @@ struct HomeView: View {
     HomeView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
+
