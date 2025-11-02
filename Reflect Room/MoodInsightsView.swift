@@ -29,7 +29,6 @@ extension ReflectionEntry {
     }
 }
 
-// MARK: - Time Range Options
 enum TimeRange: String, CaseIterable {
     case day = "Day"
     case week = "Week"
@@ -38,84 +37,82 @@ enum TimeRange: String, CaseIterable {
     case year = "Year"
 }
 
+// MARK: - MoodInsightsView
 struct MoodInsightsView: View {
     @Environment(\.managedObjectContext) private var viewContext
     var reflections: FetchedResults<ReflectionEntry>
-
     @State private var selectedRange: TimeRange = .month
-    @Environment(\.colorScheme) var colorScheme
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
             ReflectRoomBackground()
 
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: AppTheme.Spacing.xl) {
+                    // MARK: - Header
                     Text("Your Insights")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.purple)
-                        .padding(.top)
+                        .appHeadline()
+                        .foregroundColor(AppTheme.Colors.accent)
+                        .padding(.top, 8)
 
                     // MARK: - Average Mood Score
-                    VStack(spacing: 10) {
+                    VStack(spacing: AppTheme.Spacing.xs) {
                         Text("Average Mood Score")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-
+                            .appHeadline()
                         let avg = calculateAverage(for: selectedRange)
                         Text(String(format: "%.1f / 5", avg))
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundColor(.black)
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
                             .animation(.easeInOut, value: avg)
                     }
-                    .padding(.horizontal)
 
                     // MARK: - Reflection Streak
-                    VStack(spacing: 10) {
+                    VStack(spacing: AppTheme.Spacing.xs) {
                         Text("Reflection Streak")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-
+                            .appHeadline()
                         let streak = calculateReflectionStreak()
                         Text("\(streak) day\(streak == 1 ? "" : "s")")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(.black)
+                            .font(.system(size: 28, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
                     }
-                    .padding(.horizontal)
 
                     // MARK: - Insight Summary
                     insightSummary
 
-                    // MARK: - Range Selector (chips)
-                    HStack {
+                    // MARK: - Range Selector
+                    HStack(spacing: AppTheme.Spacing.sm) {
                         ForEach(TimeRange.allCases, id: \.self) { range in
-                            Button(action: { withAnimation { selectedRange = range } }) {
+                            Button {
+                                Haptics.tap()
+                                withAnimation(.easeInOut) { selectedRange = range }
+                            } label: {
                                 Text(range.rawValue)
+                                    .font(.subheadline)
                                     .fontWeight(selectedRange == range ? .bold : .regular)
-                                    .foregroundColor(selectedRange == range ? .white : .primary)
+                                    .foregroundColor(selectedRange == range ? .white : AppTheme.Colors.textPrimary)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 12)
                                     .background(
-                                        Capsule()
-                                            .fill(selectedRange == range ? Color.purple : Color.gray.opacity(0.2))
+                                        Capsule().fill(selectedRange == range
+                                                       ? AppTheme.Colors.accent
+                                                       : AppTheme.Colors.cardBg(scheme))
                                     )
                             }
                         }
                     }
-                    .padding(.vertical, 8)
 
                     // MARK: - Mood Distribution Chart
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                         Text("Mood Distribution")
-                            .font(.headline)
-                            .foregroundColor(.purple)
+                            .appHeadline()
+                            .foregroundColor(AppTheme.Colors.accent)
                             .padding(.leading, 8)
 
                         let distro = moodDistribution(for: selectedRange)
                         if distro.isEmpty {
                             Text("No data available for this period.")
-                                .foregroundColor(.secondary)
+                                .subtleLabel()
                                 .frame(maxWidth: .infinity, alignment: .center)
                         } else {
                             Chart(distro, id: \.mood) { stat in
@@ -134,16 +131,16 @@ struct MoodInsightsView: View {
                     }
 
                     // MARK: - Mood Over Time Chart
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                         Text("Mood Over Time")
-                            .font(.headline)
-                            .foregroundColor(.purple)
+                            .appHeadline()
+                            .foregroundColor(AppTheme.Colors.accent)
                             .padding(.leading, 8)
 
                         let trends = filteredMoodTrends(for: selectedRange)
                         if trends.isEmpty {
                             Text("No reflections recorded in this range.")
-                                .foregroundColor(.secondary)
+                                .subtleLabel()
                                 .frame(maxWidth: .infinity, alignment: .center)
                         } else {
                             Chart(trends) { trend in
@@ -152,7 +149,7 @@ struct MoodInsightsView: View {
                                     y: .value("Average Score", trend.averageScore)
                                 )
                                 .interpolationMethod(.catmullRom)
-                                .foregroundStyle(Color.purple)
+                                .foregroundStyle(AppTheme.Colors.accent)
                                 .lineStyle(StrokeStyle(lineWidth: 3))
                                 .symbol(Circle().strokeBorder(lineWidth: 1.5))
                             }
@@ -168,16 +165,11 @@ struct MoodInsightsView: View {
                                     AxisValueLabel {
                                         if let date = value.as(Date.self) {
                                             switch selectedRange {
-                                            case .day:
-                                                Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated))))
-                                            case .week:
-                                                Text(date.formatted(.dateTime.weekday(.abbreviated)))
-                                            case .month:
-                                                Text(date.formatted(.dateTime.day()))
-                                            case .sixMonths:
-                                                Text(date.formatted(.dateTime.month(.abbreviated)))
-                                            case .year:
-                                                Text(date.formatted(.dateTime.month(.abbreviated)))
+                                            case .day:       Text(date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated))))
+                                            case .week:      Text(date.formatted(.dateTime.weekday(.abbreviated)))
+                                            case .month:     Text(date.formatted(.dateTime.day()))
+                                            case .sixMonths: Text(date.formatted(.dateTime.month(.abbreviated)))
+                                            case .year:      Text(date.formatted(.dateTime.month(.abbreviated)))
                                             }
                                         }
                                     }
@@ -195,7 +187,7 @@ struct MoodInsightsView: View {
         .navigationTitle("Mood Insights")
     }
 
-    // MARK: - Average Mood Calculation
+    // MARK: - Average Mood
     private func calculateAverage(for range: TimeRange) -> Double {
         let filtered = filteredMoodTrends(for: range)
         let total = filtered.reduce(0.0) { $0 + $1.averageScore }
@@ -206,51 +198,40 @@ struct MoodInsightsView: View {
     private func calculateReflectionStreak() -> Int {
         let sorted = reflections.compactMap { $0.timestamp }.sorted(by: >)
         guard let latest = sorted.first else { return 0 }
-
         var streak = 1
         var previousDate = latest
-
         for date in sorted.dropFirst() {
             if Calendar.current.isDate(date, inSameDayAs: previousDate) { continue }
             if let diff = Calendar.current.dateComponents([.day], from: date, to: previousDate).day, diff == 1 {
                 streak += 1
                 previousDate = date
-            } else {
-                break
-            }
+            } else { break }
         }
         return streak
     }
 
-    // MARK: - Mood Distribution (tuple to avoid MoodStat redeclaration)
     private func moodDistribution(for range: TimeRange) -> [(mood: String, count: Int)] {
         let moods = ["Happy", "Okay", "Sad", "Anxious", "Angry"]
         let (start, end) = dateRange(for: range)
-
         let inRange = reflections.filter { entry in
             guard let d = entry.timestamp else { return false }
             return d >= start && d <= end
         }
-
         return moods.compactMap { mood in
             let c = inRange.filter { $0.mood == mood }.count
             return c > 0 ? (mood, c) : nil
         }
     }
 
-    // MARK: - Mood Trends
     private func filteredMoodTrends(for range: TimeRange) -> [MoodTrend] {
         let (start, end) = dateRange(for: range)
         let filtered = reflections.filter {
             if let date = $0.timestamp { return date >= start && date <= end }
             return false
         }
-
-        // Group by start-of-day
         let grouped = Dictionary(grouping: filtered) {
             Calendar.current.startOfDay(for: $0.timestamp ?? Date())
         }
-
         return grouped.map { (date, entries) in
             let scores = entries.map { ReflectionEntry.moodScore(for: $0.mood ?? "") }
             let avg = scores.reduce(0, +) / Double(scores.count)
@@ -259,7 +240,6 @@ struct MoodInsightsView: View {
         .sorted { $0.date < $1.date }
     }
 
-    // MARK: - Date Range Calculation
     private func dateRange(for range: TimeRange) -> (start: Date, end: Date) {
         let now = Date()
         switch range {
@@ -271,9 +251,8 @@ struct MoodInsightsView: View {
         }
     }
 
-    // MARK: - Insight Summary
     private var insightSummary: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppTheme.Spacing.sm) {
             let currentAverage  = calculateAverage(for: selectedRange)
             let previousAverage = calculatePreviousAverage(for: selectedRange)
             let difference      = currentAverage - previousAverage
@@ -298,39 +277,25 @@ struct MoodInsightsView: View {
         .animation(.easeInOut(duration: 0.3), value: selectedRange)
     }
 
-    // MARK: - Previous Average
     private func calculatePreviousAverage(for range: TimeRange) -> Double {
         let now = Date()
         let length: TimeInterval
         switch range {
-        case .day:       length = 86400
-        case .week:      length = 7 * 86400
-        case .month:     length = 30 * 86400
+        case .day: length = 86400
+        case .week: length = 7 * 86400
+        case .month: length = 30 * 86400
         case .sixMonths: length = 182 * 86400
-        case .year:      length = 365 * 86400
+        case .year: length = 365 * 86400
         }
-
         let start = now.addingTimeInterval(-2 * length)
         let end   = now.addingTimeInterval(-length)
-
         let previousData = reflections.filter {
             if let d = $0.timestamp { return d >= start && d < end }
             return false
         }
-
         let scores = previousData.map { ReflectionEntry.moodScore(for: $0.mood ?? "") }
         let total  = scores.reduce(0.0, +)
         return scores.isEmpty ? 0 : total / Double(scores.count)
-    }
-
-    // MARK: - Helpers
-    private func avgColor(for score: Double) -> Color {
-        switch score {
-        case 4.5...5:     return .green
-        case 3.5..<4.5:   return .yellow
-        case 2.5..<3.5:   return .orange
-        default:          return .red
-        }
     }
 
     private func colorForMood(_ mood: String) -> Color {
@@ -340,44 +305,43 @@ struct MoodInsightsView: View {
         case "sad":    return .blue
         case "anxious":return .orange
         case "angry":  return .red
-        default:       return .purple
+        default:       return AppTheme.Colors.accent
         }
     }
 }
 
-// MARK: - Insight Card Component
+// MARK: - Insight Card
 struct InsightCardView: View {
     var title: String
     var message: String
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: AppTheme.Spacing.xs) {
             Text(title)
-                .font(.headline)
-                .foregroundColor(.purple)
-
+                .appHeadline()
+                .foregroundColor(AppTheme.Colors.accent)
             Text(message)
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
+                .foregroundColor(AppTheme.Colors.textSecondary)
                 .padding(.horizontal)
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemGray6).opacity(0.9))
-                .shadow(radius: 3)
+            RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                .fill(AppTheme.Colors.cardBg(scheme))
+                .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.08), radius: 4, x: 0, y: 3)
         )
         .padding(.horizontal)
     }
 }
 
-// MARK: - Preview (works with FetchedResults)
+// MARK: - Preview
 #Preview {
     struct PreviewWrapper: View {
         @FetchRequest(sortDescriptors: [])
         private var reflections: FetchedResults<ReflectionEntry>
-
         var body: some View {
             MoodInsightsView(reflections: reflections)
                 .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)

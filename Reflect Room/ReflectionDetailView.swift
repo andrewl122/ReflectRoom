@@ -14,7 +14,7 @@ import UIKit
 struct ReflectionDetailView: View {
     var entry: ReflectionEntry
     @Environment(\.managedObjectContext) private var viewContext
-    @Environment(\.colorScheme) var colorScheme
+    @Environment(\.colorScheme) private var scheme
 
     @State private var player: AVPlayer? = nil
     @State private var isPlayerReady = false
@@ -25,64 +25,58 @@ struct ReflectionDetailView: View {
 
     var body: some View {
         ZStack {
-            ReflectRoomBackground()
-                .ignoresSafeArea()
+            ReflectRoomBackground().ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 25) {
-                    // Header
+                VStack(spacing: AppTheme.Spacing.lg) {
+                    // MARK: - Header
                     Text("Reflection")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(colorScheme == .dark ? .white : .black)
+                        .appTitle()
+                        .foregroundColor(AppTheme.Colors.textPrimary)
 
-                    // Mood + Date
-                    HStack(spacing: 10) {
+                    // MARK: - Mood + Date
+                    HStack(spacing: AppTheme.Spacing.sm) {
                         Text(moodEmoji(for: entry.mood ?? ""))
                             .font(.largeTitle)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.mood ?? "Unknown Mood")
-                                .font(.headline)
-                                .foregroundColor(.primary)
+                                .appHeadline()
                             if let date = entry.timestamp {
                                 Text(date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .subtleLabel()
                             }
                         }
                     }
 
-                    // 🎥 Video Section (thumbnail + overlay)
+                    // MARK: - 🎥 Video Section
                     if let videoPath = entry.videoPath,
                        let url = getVideoURL(from: videoPath) {
                         ZStack {
-                            // Thumbnail
                             if let thumbnail = thumbnailImage {
                                 Image(uiImage: thumbnail)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(height: 250)
                                     .clipped()
-                                    .cornerRadius(12)
+                                    .cornerRadius(AppTheme.Radii.lg)
                                     .opacity(isPlaying ? 0 : 1)
                                     .animation(.easeInOut(duration: 0.3), value: isPlaying)
                             } else {
                                 Rectangle()
                                     .fill(Color(UIColor.tertiarySystemFill))
                                     .frame(height: 250)
-                                    .cornerRadius(12)
+                                    .cornerRadius(AppTheme.Radii.lg)
                                     .onAppear { generateThumbnail(for: url) }
                             }
 
-                            // Player
                             if player != nil {
                                 VideoPlayer(player: player)
                                     .frame(height: 250)
-                                    .cornerRadius(12)
+                                    .cornerRadius(AppTheme.Radii.lg)
                                     .opacity(isPlaying ? 1 : 0)
                                     .onAppear {
-                                        if let currentPlayer = player {
-                                            observePlayback(for: currentPlayer)
+                                        if let current = player {
+                                            observePlayback(for: current)
                                         }
                                     }
                                     .onDisappear {
@@ -91,14 +85,16 @@ struct ReflectionDetailView: View {
                                     }
                             }
 
-                            // Overlay button
                             if showOverlay {
                                 Rectangle()
                                     .fill(Color.black.opacity(0.35))
-                                    .cornerRadius(12)
+                                    .cornerRadius(AppTheme.Radii.lg)
                                     .frame(height: 250)
                                     .overlay(
-                                        Button(action: togglePlayback) {
+                                        Button(action: {
+                                            Haptics.tap()
+                                            togglePlayback()
+                                        }) {
                                             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                                 .resizable()
                                                 .scaledToFit()
@@ -118,31 +114,28 @@ struct ReflectionDetailView: View {
                         }
                     }
 
-                    // 🎙 Audio Section (if present)
+                    // MARK: - 🎙 Audio Section
                     if let audioPath = entry.audioPath, !audioPath.isEmpty {
                         AudioPlayerView(audioFilename: audioPath)
+                            .cardBackground(scheme)
                     } else if entry.videoPath == nil {
-                        // Show a friendly empty state if neither video nor audio exists
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
                             .fill(Color(UIColor.tertiarySystemFill))
                             .frame(height: 80)
-                            .overlay(Text("No media attached").foregroundColor(.secondary))
+                            .overlay(Text("No media attached").subtleLabel())
                     }
 
-                    // 📝 Reflection Text
-                    VStack(alignment: .leading, spacing: 8) {
+                    // MARK: - 📝 Reflection Text
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                         Text("Reflection Notes")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-
+                            .appHeadline()
                         Text(entry.text ?? "No written reflection.")
-                            .font(.body)
-                            .foregroundColor(.primary)
+                            .appBody()
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.8))
+                                RoundedRectangle(cornerRadius: AppTheme.Radii.lg)
+                                    .fill(AppTheme.Colors.cardBg(scheme))
                             )
                     }
 
@@ -154,7 +147,7 @@ struct ReflectionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: - Video Player Setup & Controls
+    // MARK: - Video Setup
     private func setupPlayer(with url: URL) {
         if player == nil {
             let newPlayer = AVPlayer(url: url)
@@ -194,6 +187,7 @@ struct ReflectionDetailView: View {
                 isPlaying = false
                 showOverlay = true
             }
+            Haptics.tap()
         }
     }
 
@@ -208,17 +202,15 @@ struct ReflectionDetailView: View {
     private func generateThumbnail(for url: URL) {
         DispatchQueue.global(qos: .background).async {
             let asset = AVAsset(url: url)
-            let imageGenerator = AVAssetImageGenerator(asset: asset)
-            imageGenerator.appliesPreferredTrackTransform = true
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
             let time = CMTime(seconds: 0.1, preferredTimescale: 600)
             do {
-                let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                 let uiImage = UIImage(cgImage: cgImage)
-                DispatchQueue.main.async {
-                    thumbnailImage = uiImage
-                }
+                DispatchQueue.main.async { thumbnailImage = uiImage }
             } catch {
-                print("❌ Failed to generate thumbnail: \(error.localizedDescription)")
+                print("❌ Thumbnail generation failed: \(error.localizedDescription)")
             }
         }
     }
@@ -236,8 +228,8 @@ struct ReflectionDetailView: View {
     }
 
     private func getVideoURL(from path: String) -> URL? {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        return documents?.appendingPathComponent(path)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        return docs?.appendingPathComponent(path)
     }
 }
 

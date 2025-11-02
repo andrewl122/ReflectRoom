@@ -11,7 +11,7 @@ import AVKit
 
 struct TimelineView: View {
     @Environment(\.managedObjectContext) private var viewContext
-    @Environment(\.colorScheme) var colorScheme
+    @Environment(\.colorScheme) private var scheme
 
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \ReflectionEntry.timestamp, ascending: false)],
@@ -22,55 +22,56 @@ struct TimelineView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // 🌈 Animated Reflect Room Background
                 ReflectRoomBackground()
 
                 if reflections.isEmpty {
-                    VStack(spacing: 20) {
+                    VStack(spacing: AppTheme.Spacing.md) {
                         Text("No Reflections Yet")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(colorScheme == .dark ? .white : .black)
+                            .appHeadline()
+                            .foregroundColor(AppTheme.Colors.textPrimary)
 
                         Text("Your recorded reflections will appear here once you’ve saved a few check-ins.")
-                            .font(.subheadline)
+                            .subtleLabel()
                             .multilineTextAlignment(.center)
-                            .foregroundColor(.secondary)
                             .padding(.horizontal, 40)
                     }
                     .padding()
                 } else {
-                    List {
-                        ForEach(reflections) { entry in
-                            NavigationLink(destination: ReflectionDetailView(entry: entry)) {
-                                HStack(spacing: 15) {
-                                    Text(moodEmoji(for: entry.mood ?? ""))
-                                        .font(.largeTitle)
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.md) {
+                            ForEach(reflections) { entry in
+                                NavigationLink(destination: ReflectionDetailView(entry: entry)) {
+                                    HStack(spacing: AppTheme.Spacing.md) {
+                                        Text(moodEmoji(for: entry.mood ?? ""))
+                                            .font(.largeTitle)
 
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(entry.mood ?? "Unknown Mood")
-                                            .font(.headline)
-                                            .foregroundColor(colorScheme == .dark ? .white : .black)
-                                        Text(entry.timestamp ?? Date(), style: .date)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(entry.mood ?? "Unknown Mood")
+                                                .appHeadline()
+                                            Text(entry.timestamp ?? Date(), style: .date)
+                                                .subtleLabel()
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.footnote)
+                                            .foregroundColor(AppTheme.Colors.textSecondary)
                                     }
+                                    .padding()
+                                    .cardBackground(scheme)
                                 }
-                                .padding(.vertical, 6)
                             }
-                            .listRowBackground(Color.clear)
+                            .onDelete(perform: deleteItems)
                         }
-                        .onDelete(perform: deleteItems)
+                        .padding()
                     }
-                    // 🔧 This keeps the gradient visible behind the list
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
                 }
             }
             .navigationTitle("Reflections")
             .navigationBarTitleDisplayMode(.large)
         }
-        .background(ReflectRoomBackground()) // 🔥 fallback to ensure gradient stays active
+        .background(ReflectRoomBackground())
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -86,12 +87,18 @@ struct TimelineView: View {
         }
     }
 
+    private func deleteSelected() {
+        // No swipe-to-delete in ScrollView, but if you add one later, this keeps it safe.
+        // Example placeholder for keyboard delete command on macOS Catalyst.
+    }
+
     private func deleteItems(at offsets: IndexSet) {
         for index in offsets {
             let entry = reflections[index]
             viewContext.delete(entry)
         }
         try? viewContext.save()
+        Haptics.tap()
     }
 }
 
