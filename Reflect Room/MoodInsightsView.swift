@@ -16,19 +16,6 @@ struct MoodTrend: Identifiable {
     let averageScore: Double
 }
 
-extension ReflectionEntry {
-    static func moodScore(for mood: String) -> Double {
-        switch mood.lowercased() {
-        case "happy":  return 5
-        case "okay":   return 4
-        case "sad":    return 3
-        case "anxious":return 2
-        case "angry":  return 1
-        default:       return 3
-        }
-    }
-}
-
 enum TimeRange: String, CaseIterable {
     case day = "Day"
     case week = "Week"
@@ -43,12 +30,21 @@ struct MoodInsightsView: View {
     var reflections: FetchedResults<ReflectionEntry>
     @State private var selectedRange: TimeRange = .month
     @Environment(\.colorScheme) private var scheme
+    @State private var showDetailedStats = false
+    @State private var showMoodInfo = false // info alert toggle
 
     var body: some View {
         ZStack {
             ReflectRoomBackground()
 
             ScrollView {
+                // 🧩 Compute analytics before layout
+                let reflectionList = Array(reflections)
+                let currentStreak = ReflectionEntry.currentStreak(from: reflectionList)
+                let longestStreak = ReflectionEntry.longestStreak(from: reflectionList)
+                let weekComparison = ReflectionEntry.compareWeekToLast(from: reflectionList)
+                let filteredCount = reflectionCount(for: selectedRange)
+
                 VStack(spacing: AppTheme.Spacing.xl) {
                     // MARK: - Header
                     Text("Your Insights")
@@ -56,29 +52,106 @@ struct MoodInsightsView: View {
                         .foregroundColor(AppTheme.Colors.accent)
                         .padding(.top, 8)
 
+                    // MARK: - Streak & Comparison Summary
+                    VStack(spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("Current Streak")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text("\(currentStreak) days")
+                                    .font(.headline)
+                                    .bold()
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing) {
+                                Text("Longest Streak")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text("\(longestStreak) days")
+                                    .font(.headline)
+                                    .bold()
+                            }
+                        }
+                        .padding()
+                        .background(AppTheme.Colors.cardBg(scheme))
+                        .cornerRadius(AppTheme.Radii.lg)
+
+                        if weekComparison != 0 {
+                            Text("Mood change from last week: \(weekComparison > 0 ? "+" : "")\(weekComparison, specifier: "%.1f")%")
+                                .font(.subheadline)
+                                .foregroundColor(weekComparison >= 0 ? .green : .red)
+                                .animation(.easeInOut, value: weekComparison)
+                        }
+
+                        // MARK: - View Detailed Stats Button
+                        Button {
+                            Haptics.tap()
+                            showDetailedStats = true
+                        } label: {
+                            Text("View Detailed Stats")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 16)
+                                .background(AppTheme.Colors.accent)
+                                .foregroundColor(.white)
+                                .cornerRadius(AppTheme.Radii.lg)
+                        }
+                        .sheet(isPresented: $showDetailedStats) {
+                            DetailedStatsView(reflections: reflectionList)
+                                .presentationDetents([.medium, .large])
+                        }
+                    }
+
                     // MARK: - Average Mood Score
                     VStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Average Mood Score")
-                            .appHeadline()
+                        HStack(spacing: 4) {
+                            Text("Average Mood Score")
+                                .appHeadline()
+                            Button {
+                                Haptics.tap()
+                                showMoodInfo = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .alert("How It's Calculated", isPresented: $showMoodInfo) {
+                                Button("Got it", role: .cancel) { }
+                            } message: {
+                                Text("""
+                                Your mood average is based on all reflections recorded within the selected period.
+
+                                😊 Happy = 5  
+                                😐 Okay = 4  
+                                😢 Sad = 3  
+                                😰 Anxious = 2  
+                                😠 Angry = 1
+
+                                The app averages these scores to show your overall mood trend.
+                                """)
+                            }
+                        }
+
                         let avg = calculateAverage(for: selectedRange)
                         Text(String(format: "%.1f / 5", avg))
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .animation(.easeInOut, value: avg)
-                    }
 
-                    // MARK: - Reflection Streak (Fixed)
-                    VStack(spacing: AppTheme.Spacing.xs) {
-                        Text("Reflection Streak")
-                            .appHeadline()
-                        let streak = calculateReflectionStreak()
-                        Text("\(streak) day\(streak == 1 ? "" : "s")")
-                            .font(.system(size: 28, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: streak)
-                        Text("Keep your streak going by reflecting daily!")
-                            .font(.subheadline)
-                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        // MARK: - Data Coverage Indicator (dynamic by range)
+                        if filteredCount > 0 {
+                            Text("Based on \(filteredCount) reflection\(filteredCount == 1 ? "" : "s") this \(selectedRange.labelDescription.lowercased())")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .animation(.easeInOut, value: selectedRange)
+                        } else {
+                            Text("No reflections recorded this \(selectedRange.labelDescription.lowercased())")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .animation(.easeInOut, value: selectedRange)
+                        }
                     }
 
                     // MARK: - Insight Summary
@@ -191,40 +264,20 @@ struct MoodInsightsView: View {
         .navigationTitle("Mood Insights")
     }
 
+    // MARK: - Helper: Reflection Count by Range
+    private func reflectionCount(for range: TimeRange) -> Int {
+        let (start, end) = dateRange(for: range)
+        return reflections.filter {
+            if let d = $0.timestamp { return d >= start && d <= end }
+            return false
+        }.count
+    }
+
     // MARK: - Average Mood
     private func calculateAverage(for range: TimeRange) -> Double {
         let filtered = filteredMoodTrends(for: range)
         let total = filtered.reduce(0.0) { $0 + $1.averageScore }
         return filtered.isEmpty ? 0 : total / Double(filtered.count)
-    }
-
-    // MARK: - Fixed Reflection Streak
-    private func calculateReflectionStreak() -> Int {
-        let sorted = reflections.compactMap { $0.timestamp }
-            .sorted(by: >)
-            .map { Calendar.current.startOfDay(for: $0) }
-
-        guard !sorted.isEmpty else { return 0 }
-
-        var streak = 1
-        var previous = sorted.first!
-
-        // ✅ Ensure the latest reflection is today
-        if !Calendar.current.isDateInToday(previous) {
-            return 0
-        }
-
-        for date in sorted.dropFirst() {
-            let daysApart = Calendar.current.dateComponents([.day], from: date, to: previous).day ?? 0
-            if daysApart == 1 {
-                streak += 1
-                previous = date
-            } else if daysApart > 1 {
-                break
-            }
-        }
-
-        return streak
     }
 
     private func moodDistribution(for range: TimeRange) -> [(mood: String, count: Int)] {
@@ -323,6 +376,19 @@ struct MoodInsightsView: View {
         case "anxious":return .orange
         case "angry":  return .red
         default:       return AppTheme.Colors.accent
+        }
+    }
+}
+
+// MARK: - TimeRange Label Description
+extension TimeRange {
+    var labelDescription: String {
+        switch self {
+        case .day: return "day"
+        case .week: return "week"
+        case .month: return "month"
+        case .sixMonths: return "6 months"
+        case .year: return "year"
         }
     }
 }
