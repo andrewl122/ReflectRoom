@@ -12,9 +12,10 @@ struct DetailedStatsView: View {
     var reflections: [ReflectionEntry]
     @Environment(\.colorScheme) private var scheme
     @State private var showInfo = false
-    @State private var selectedRange: TimeRange = .month // ✅ same range toggle as MoodInsightsView
+    @State private var selectedRange: TimeRange = .month
 
     // MARK: - Computed Properties
+
     private var avgMood: Double {
         let scores = reflections.map { ReflectionEntry.moodScore(for: $0.mood ?? "") }
         return scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
@@ -43,19 +44,73 @@ struct DetailedStatsView: View {
         ReflectionEntry.longestStreak(from: reflections)
     }
 
+    /// Reflections per week (human-friendly)
+    /// - Uses span from first reflection to **today**
+    /// - Treats anything under 1 week as 1 week (so early users don’t get 14/week silliness)
+    /// - Caps at 7 for the ring visual + copy
     private var reflectionFrequency: Double {
-        guard let first = reflections.compactMap({ $0.timestamp }).min() else { return 0 }
-        let daysActive = max(1, Calendar.current.dateComponents([.day], from: first, to: Date()).day ?? 1)
-        let weeklyRate = Double(reflectionCount) / Double(daysActive / 7)
-        return min(weeklyRate, 7)
+        guard
+            !reflections.isEmpty,
+            let first = reflections.compactMap({ $0.timestamp }).min()
+        else { return 0 }
+
+        let daysSpan = max(1, Calendar.current.dateComponents([.day], from: first, to: Date()).day ?? 1)
+
+        // Use at least 1 week so very new users don't get inflated numbers.
+        let weeksActive = max(Double(daysSpan) / 7.0, 1.0)
+
+        let perWeek = Double(reflectionCount) / weeksActive
+
+        // Cap to 7 for display/visual sanity.
+        return min(perWeek, 7.0)
     }
 
-    // MARK: - View Body
+    private var normalizedFrequency: Double {
+        // 0.0 - 1.0 for the ring trim
+        guard reflectionFrequency > 0 else { return 0 }
+        return min(reflectionFrequency / 7.0, 1.0)
+    }
+
+    // MARK: - Dynamic Ring Gradient
+
+    private var ringGradient: Gradient {
+        switch reflectionFrequency {
+        case 0..<1:
+            return Gradient(colors: [.red, .orange])
+        case 1..<4:
+            return Gradient(colors: [.orange, .yellow])
+        case 4..<6:
+            return Gradient(colors: [.green, .teal])
+        default:
+            return Gradient(colors: [AppTheme.Colors.accent, .purple])
+        }
+    }
+
+    // MARK: - Motivational Text
+
+    private var frequencyMessage: String {
+        switch reflectionFrequency {
+        case 0:
+            return "No reflections yet — your first one can start today 🌱"
+        case 0..<1:
+            return "You’re just getting started — great first steps 🌱"
+        case 1..<4:
+            return "Building momentum — keep it going 💫"
+        case 4..<6:
+            return "You’re finding your flow 🌿"
+        default:
+            return "Daily reflection rhythm unlocked 🔥"
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // MARK: - Mood Icon + Title
+
+                    // MARK: - Title
                     VStack(spacing: 6) {
                         Text(emojiForMood(dominantMood))
                             .font(.system(size: 56))
@@ -80,9 +135,10 @@ struct DetailedStatsView: View {
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 12)
                                     .background(
-                                        Capsule().fill(selectedRange == range
-                                                       ? AppTheme.Colors.accent
-                                                       : AppTheme.Colors.cardBg(scheme))
+                                        Capsule()
+                                            .fill(selectedRange == range
+                                                  ? AppTheme.Colors.accent
+                                                  : AppTheme.Colors.cardBg(scheme))
                                     )
                             }
                         }
@@ -90,15 +146,21 @@ struct DetailedStatsView: View {
 
                     // MARK: - Key Stats Grid
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
-                        statCard(title: "Average Mood", value: String(format: "%.1f / 5", avgMood))
-                        statCard(title: "Last 7 Days", value: String(format: "%.1f / 5", recentAvgMood))
-                        statCard(title: "Reflections", value: "\(reflectionCount)")
-                        statCard(title: "Dominant Mood", value: "\(emojiForMood(dominantMood)) \(dominantMood)")
-                        statCard(title: "Current Streak", value: "\(currentStreak) days")
-                        statCard(title: "Longest Streak", value: "\(longestStreak) days")
+                        statCard(title: "Average Mood",
+                                 value: String(format: "%.1f / 5", avgMood))
+                        statCard(title: "Last 7 Days",
+                                 value: String(format: "%.1f / 5", recentAvgMood))
+                        statCard(title: "Reflections",
+                                 value: "\(reflectionCount)")
+                        statCard(title: "Dominant Mood",
+                                 value: "\(emojiForMood(dominantMood)) \(dominantMood)")
+                        statCard(title: "Current Streak",
+                                 value: "\(currentStreak) days")
+                        statCard(title: "Longest Streak",
+                                 value: "\(longestStreak) days")
                     }
 
-                    // MARK: - Data Coverage Indicator (Dynamic)
+                    // MARK: - Data Coverage Indicator
                     let count = reflectionCount(for: selectedRange)
                     if count > 0 {
                         Text("Based on \(count) reflection\(count == 1 ? "" : "s") this \(selectedRange.labelDescription.lowercased())")
@@ -131,10 +193,10 @@ struct DetailedStatsView: View {
                                 Text("""
                                 Each mood is converted into a 1–5 numeric value:
 
-                                😊 Happy = 5  
-                                😐 Okay = 4  
-                                😢 Sad = 3  
-                                😰 Anxious = 2  
+                                😊 Happy = 5
+                                😐 Okay = 4
+                                😢 Sad = 3
+                                😰 Anxious = 2
                                 😠 Angry = 1
 
                                 Your averages represent the mean of these scores based on your recorded reflections.
@@ -155,30 +217,30 @@ struct DetailedStatsView: View {
                                     radius: 4, x: 0, y: 3)
                     )
 
-                    // MARK: - Reflection Frequency Progress Ring
+                    // MARK: - Reflection Frequency Ring
                     VStack(spacing: 10) {
                         Text("Reflection Frequency")
                             .appHeadline()
                             .foregroundColor(AppTheme.Colors.accent)
 
                         ZStack {
+                            // Background ring
                             Circle()
                                 .stroke(lineWidth: 12)
                                 .opacity(0.15)
                                 .foregroundColor(.gray)
 
+                            // Progress ring
                             Circle()
-                                .trim(from: 0.0, to: reflectionFrequency / 7.0)
+                                .trim(from: 0.0, to: normalizedFrequency)
                                 .stroke(
-                                    AngularGradient(
-                                        gradient: Gradient(colors: [AppTheme.Colors.accent, .green]),
-                                        center: .center
-                                    ),
+                                    AngularGradient(gradient: ringGradient, center: .center),
                                     style: StrokeStyle(lineWidth: 12, lineCap: .round)
                                 )
                                 .rotationEffect(.degrees(-90))
-                                .animation(.easeOut(duration: 0.8), value: reflectionFrequency)
+                                .animation(.easeOut(duration: 1.0), value: normalizedFrequency)
 
+                            // Center label
                             VStack(spacing: 2) {
                                 Text(String(format: "%.1f", reflectionFrequency))
                                     .font(.title.bold())
@@ -188,6 +250,12 @@ struct DetailedStatsView: View {
                             }
                         }
                         .frame(width: 160, height: 160)
+
+                        Text(frequencyMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                            .transition(.opacity)
                     }
                     .padding(.top, 16)
 
@@ -201,6 +269,7 @@ struct DetailedStatsView: View {
     }
 
     // MARK: - Helper: Count by Range
+
     private func reflectionCount(for range: TimeRange) -> Int {
         let (start, end) = dateRange(for: range)
         return reflections.filter {
@@ -221,6 +290,7 @@ struct DetailedStatsView: View {
     }
 
     // MARK: - Reusable Stat Card
+
     private func statCard(title: String, value: String) -> some View {
         VStack(spacing: 6) {
             Text(title)
@@ -240,7 +310,8 @@ struct DetailedStatsView: View {
         )
     }
 
-    // MARK: - Mood Emoji Helper (Unified)
+    // MARK: - Mood Emoji Helper
+
     private func emojiForMood(_ mood: String) -> String {
         switch mood.lowercased() {
         case "happy": return "😊"
@@ -254,9 +325,8 @@ struct DetailedStatsView: View {
     }
 }
 
-
-
 // MARK: - Helper Extension
+
 fileprivate extension Array where Element == String {
     func mostFrequent() -> String? {
         guard !isEmpty else { return nil }
