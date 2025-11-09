@@ -78,6 +78,61 @@ struct CheckInView: View {
             return "Tap to see guided prompts tailored to your mood."
         }
     }
+    // MARK: - Mood Reflection Quote (Integrated from lastMoodMessage)
+    private var moodReflectionQuote: String {
+        let messages: [String]
+
+        switch selectedMood.lowercased() {
+        case "happy":
+            messages = [
+                "You’ve been radiating good energy lately — keep leaning into that joy.",
+                "Your reflections show gratitude and light — beautiful work staying positive.",
+                "You seem to be in a great rhythm lately. Savor those little wins.",
+                "Your last entry felt peaceful — sounds like your spirit’s in a good place.",
+                "You’ve been finding joy in the small things. That’s powerful self-care."
+            ]
+        case "okay":
+            messages = [
+                "You’re holding steady — sometimes balance is the best place to be.",
+                "Your recent reflections show calm and clarity. Keep that grounded energy.",
+                "Even ‘okay’ days matter — they remind you of your progress.",
+                "You’ve been consistent and thoughtful — that stability pays off.",
+                "Not every day is fireworks, and that’s okay. Steady feels safe."
+            ]
+        case "sad":
+            messages = [
+                "Your last reflection carried some weight. Give yourself space to heal.",
+                "You’ve been processing something deep — it’s okay to slow down.",
+                "Sad moments show you what matters most. Let them move through gently.",
+                "Your heart sounded heavy last time. Remember: reflection itself is healing.",
+                "You’ve been brave enough to feel — that’s strength, not weakness."
+            ]
+        case "anxious":
+            messages = [
+                "Your recent reflections showed tension — maybe take a slow breath before you write.",
+                "You’ve been carrying a lot in your mind. Let today’s check-in help release it.",
+                "Your thoughts seemed restless lately — grounding yourself here can help.",
+                "You’ve been in your head a lot lately. Let’s bring you back to calm.",
+                "Your reflections reveal awareness — that’s the first step toward peace."
+            ]
+        case "angry":
+            messages = [
+                "You’ve had fire in your words recently — reflection helps you channel it constructively.",
+                "Your emotions have been intense. Use this space to transform them into clarity.",
+                "You’ve been feeling that spark of frustration — let’s turn it into focus.",
+                "You’ve been processing anger lately — journaling can cool the storm.",
+                "Your last reflection carried heat. Let’s redirect that energy into healing."
+            ]
+        default:
+            messages = [
+                "Tap your mood below to begin your next reflection.",
+                "Each reflection brings a new layer of awareness.",
+                "Every moment you pause to reflect builds self-understanding."
+            ]
+        }
+
+        return messages.randomElement() ?? "Take a moment to reflect on how you feel."
+    }
 
     // MARK: - Body
     var body: some View {
@@ -92,8 +147,11 @@ struct CheckInView: View {
                         VStack(spacing: AppTheme.Spacing.xs) {
                             Text("Check-In")
                                 .appTitle()
-                            Text("Today you’re feeling \(selectedMood)")
-                                .subtleLabel()
+                            Text(moodReflectionQuote)
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
                         }
                         .padding(.top, 10)
 
